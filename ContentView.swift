@@ -8,14 +8,22 @@
 import SwiftUI
 import UIKit
 
+// MARK: - データモデル
+struct Item: Hashable {
+    let id = UUID()
+    let title: String
+}
+
 // MARK: - UICollectionView
 class MyCollectionViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
     
     private var collectionView: UICollectionView!
-    private let items = Array(1...30).map { "Item \($0)" }
+    private let items = (1...30).map { Item(title: "Item \($0)") }
     
-    // 選択状態保持
-    var selectedItems = Set<IndexPath>()
+    var selectedItems = Set<Item>()
+    
+    // SwiftUI 側に選択個数を通知
+    var onSelectionChange: ((Int) -> Void)?
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -30,12 +38,10 @@ class MyCollectionViewController: UIViewController, UICollectionViewDataSource, 
         collectionView.backgroundColor = .white
         collectionView.dataSource = self
         collectionView.delegate = self
-        
-        collectionView.allowsMultipleSelection = true // 複数選択可能
-        
+        collectionView.allowsMultipleSelection = true
         collectionView.register(UICollectionViewCell.self, forCellWithReuseIdentifier: "cell")
-        view.addSubview(collectionView)
         
+        view.addSubview(collectionView)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -44,22 +50,31 @@ class MyCollectionViewController: UIViewController, UICollectionViewDataSource, 
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         
-        // 長押しジェスチャー追加
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
         collectionView.addGestureRecognizer(longPress)
     }
     
-    // MARK: - 長押しハンドラー
     @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
         guard gesture.state == .began else { return }
         let point = gesture.location(in: collectionView)
-        if let indexPath = collectionView.indexPathForItem(at: point),
-           let cell = collectionView.cellForItem(at: indexPath) {
-            cell.isSelected.toggle()
-            cell.backgroundColor = cell.isSelected ? .systemRed : .systemBlue
+        if let indexPath = collectionView.indexPathForItem(at: point) {
+            let item = items[indexPath.item]
+            if selectedItems.contains(item) {
+                selectedItems.remove(item)
+                collectionView.deselectItem(at: indexPath, animated: true)
+            } else {
+                selectedItems.insert(item)
+                collectionView.selectItem(at: indexPath, animated: true, scrollPosition: [])
+            }
+            
+            if let cell = collectionView.cellForItem(at: indexPath) {
+                cell.backgroundColor = selectedItems.contains(item) ? .systemRed : .systemBlue
+            }
+            
+            // SwiftUI 側に選択数を通知
+            onSelectionChange?(selectedItems.count)
         }
     }
-
     
     // MARK: - DataSource
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -68,12 +83,12 @@ class MyCollectionViewController: UIViewController, UICollectionViewDataSource, 
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "cell", for: indexPath)
-        cell.backgroundColor = selectedItems.contains(indexPath) ? .systemRed : .systemBlue
+        let item = items[indexPath.item]
         
-        // ラベル
+        cell.backgroundColor = selectedItems.contains(item) ? .systemRed : .systemBlue
         cell.contentView.subviews.forEach { $0.removeFromSuperview() }
         let label = UILabel(frame: cell.contentView.bounds)
-        label.text = items[indexPath.item]
+        label.text = item.title
         label.textColor = .white
         label.textAlignment = .center
         cell.contentView.addSubview(label)
@@ -82,21 +97,35 @@ class MyCollectionViewController: UIViewController, UICollectionViewDataSource, 
     }
 }
 
-// MARK: - SwiftUI 側ラッパー
+// MARK: - SwiftUI ラッパー
 struct CollectionViewWrapper: UIViewControllerRepresentable {
+    
+    @Binding var selectedCount: Int
+    
     func makeUIViewController(context: Context) -> MyCollectionViewController {
-        return MyCollectionViewController()
+        let vc = MyCollectionViewController()
+        vc.onSelectionChange = { count in
+            DispatchQueue.main.async {
+                self.selectedCount = count
+            }
+        }
+        return vc
     }
     
-    func updateUIViewController(_ uiViewController: MyCollectionViewController, context: Context) {
-        // 状態が変わったときに更新処理を書く（今回は空でOK）
-    }
+    func updateUIViewController(_ uiViewController: MyCollectionViewController, context: Context) {}
 }
 
-// MARK: - Preview
+// MARK: - SwiftUI 表示
 struct ContentView: View {
+    @State private var selectedCount = 0
+    
     var body: some View {
-        CollectionViewWrapper()
-            .edgesIgnoringSafeArea(.all)
+        VStack {
+            Text("選択中: \(selectedCount) 個")
+                .font(.title)
+                .padding()
+            CollectionViewWrapper(selectedCount: $selectedCount)
+                .edgesIgnoringSafeArea(.all)
+        }
     }
 }
