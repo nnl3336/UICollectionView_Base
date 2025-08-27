@@ -8,27 +8,38 @@
 import SwiftUI
 import UIKit
 
-// MARK: - データモデル
 struct Item: Hashable {
     let id = UUID()
     let title: String
 }
 
-// MARK: - UICollectionView
 class MyCollectionViewController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
     
     private var collectionView: UICollectionView!
     private let items = (1...30).map { Item(title: "Item \($0)") }
+    private var selectedItems = Set<Item>()
     
-    var selectedItems = Set<Item>()
-    
-    // SwiftUI 側に選択個数を通知
-    var onSelectionChange: ((Int) -> Void)?
+    private let countLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.boldSystemFont(ofSize: 20)
+        label.textAlignment = .center
+        label.text = "選択中: 0 個"
+        return label
+    }()
     
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .white
         
+        // 上部ラベル
+        view.addSubview(countLabel)
+        countLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            countLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
+            countLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+        ])
+        
+        // UICollectionView 設定
         let layout = UICollectionViewFlowLayout()
         layout.itemSize = CGSize(width: 100, height: 100)
         layout.minimumLineSpacing = 10
@@ -44,12 +55,13 @@ class MyCollectionViewController: UIViewController, UICollectionViewDataSource, 
         view.addSubview(collectionView)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
-            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            collectionView.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 16),
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         
+        // 長押しジェスチャー
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
         collectionView.addGestureRecognizer(longPress)
     }
@@ -71,8 +83,8 @@ class MyCollectionViewController: UIViewController, UICollectionViewDataSource, 
                 cell.backgroundColor = selectedItems.contains(item) ? .systemRed : .systemBlue
             }
             
-            // SwiftUI 側に選択数を通知
-            onSelectionChange?(selectedItems.count)
+            // UILabel 更新
+            countLabel.text = "選択中: \(selectedItems.count) 個"
         }
     }
     
@@ -86,6 +98,7 @@ class MyCollectionViewController: UIViewController, UICollectionViewDataSource, 
         let item = items[indexPath.item]
         
         cell.backgroundColor = selectedItems.contains(item) ? .systemRed : .systemBlue
+        
         cell.contentView.subviews.forEach { $0.removeFromSuperview() }
         let label = UILabel(frame: cell.contentView.bounds)
         label.text = item.title
@@ -97,6 +110,7 @@ class MyCollectionViewController: UIViewController, UICollectionViewDataSource, 
     }
 }
 
+
 // MARK: - SwiftUI ラッパー
 struct CollectionViewWrapper: UIViewControllerRepresentable {
     
@@ -104,11 +118,6 @@ struct CollectionViewWrapper: UIViewControllerRepresentable {
     
     func makeUIViewController(context: Context) -> MyCollectionViewController {
         let vc = MyCollectionViewController()
-        vc.onSelectionChange = { count in
-            DispatchQueue.main.async {
-                self.selectedCount = count
-            }
-        }
         return vc
     }
     
